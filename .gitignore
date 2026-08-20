@@ -3,6 +3,7 @@ dist
 build
 .env
 .env.local
+frontend/.env
 *.log
 .DS_Store
 coverage
@@ -10,4 +11,4 @@ coverage
 *.db
 *.db-journal
 .vite
-drizzle/meta
+.vercel
