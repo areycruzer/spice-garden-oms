@@ -59,7 +59,12 @@ function line(
 }
 
 async function main() {
-  const client = postgres(databaseUrl, { max: 1 });
+  const client = postgres(databaseUrl, {
+  max: 1,
+  ssl: databaseUrl.includes("render.com") || databaseUrl.includes("sslmode=require")
+    ? "require"
+    : undefined,
+});
   const db = drizzle(client);
 
   console.log("Seeding Spice Garden database...");

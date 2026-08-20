@@ -13,6 +13,7 @@
     "generate": "drizzle-kit generate",
     "migrate": "tsx src/migrate.ts",
     "seed": "tsx src/seed.ts",
+    "seed:if-empty": "tsx src/seed-if-empty.ts",
     "migrate:local": "tsx --env-file=../.env src/migrate.ts",
     "seed:local": "tsx --env-file=../.env src/seed.ts",
     "typecheck": "tsc --noEmit"
