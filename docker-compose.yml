@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: spice-garden-db
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: spice
+      POSTGRES_PASSWORD: spice
+      POSTGRES_DB: spice_garden
+    volumes:
+      - spice_garden_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U spice -d spice_garden"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  spice_garden_pgdata:
