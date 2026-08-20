@@ -7,7 +7,7 @@
     "dev:frontend": "pnpm --filter frontend dev",
     "build": "pnpm --filter database build && pnpm --filter backend build && pnpm --filter frontend build",
     "build:frontend": "pnpm --filter frontend build",
-    "start:api": "pnpm --filter database migrate && pnpm --filter backend start",
+    "start:api": "pnpm --filter database migrate && pnpm --filter database seed:if-empty && pnpm --filter backend start",
     "db:generate": "pnpm --filter database generate",
     "db:migrate": "pnpm --filter database migrate",
     "db:seed": "pnpm --filter database seed",

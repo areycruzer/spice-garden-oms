@@ -10,7 +10,13 @@ if (!databaseUrl) {
 }
 
 async function main() {
-  const client = postgres(databaseUrl, { max: 1, ssl: "require" });
+  const client = postgres(databaseUrl, {
+    max: 1,
+    ssl:
+      databaseUrl.includes("render.com") || databaseUrl.includes("sslmode=require")
+        ? "require"
+        : undefined,
+  });
   const db = drizzle(client);
 
   try {
