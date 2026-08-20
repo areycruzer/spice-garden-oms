@@ -1,7 +1,7 @@
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import { count } from "drizzle-orm";
-import { customers } from "./schema.js";
+import { customers, diningTables } from "./schema.js";
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) {
@@ -19,20 +19,33 @@ async function main() {
   });
   const db = drizzle(client);
 
+  let customerCount = 0;
+  let tableCount = 0;
+
   try {
-    const [row] = await db.select({ value: count() }).from(customers);
-    if ((row?.value ?? 0) > 0) {
-      console.log(`Seed skipped: ${row!.value} customers already present.`);
-      await client.end();
-      return;
-    }
+    const [cRow] = await db.select({ value: count() }).from(customers);
+    customerCount = cRow?.value ?? 0;
+    const [tRow] = await db.select({ value: count() }).from(diningTables);
+    tableCount = tRow?.value ?? 0;
   } catch {
     // tables may not exist yet; migrate should have run first
   }
 
+  if (customerCount > 0 && tableCount > 0) {
+    console.log(
+      `Seed skipped: ${customerCount} customers and ${tableCount} tables already present.`,
+    );
+    await client.end();
+    return;
+  }
+
   await client.end();
 
-  // Re-run full seed script
+  console.log(
+    customerCount === 0
+      ? "Empty customers — running full seed."
+      : "Missing dining tables — running full seed to load Floor Ops demo data.",
+  );
   await import("./seed.js");
 }
 
