@@ -114,42 +114,41 @@ export function FloorPage() {
             {floor.tables.map((table) => {
               const isSuggested = table.id === suggestedTableId;
               const occupied = table.status !== "FREE";
-              return (
-                <button
-                  key={table.id}
-                  type="button"
-                  disabled={occupied || !selectedOrderId || assign.isPending}
-                  onClick={() => {
-                    const source =
-                      table.id === suggestedTableId ? "AI" : "HOST";
-                    void onAssign(table.id, source);
-                  }}
-                  className={cn(
-                    "relative flex min-h-[7.5rem] flex-col items-start justify-between rounded-lg border p-3 text-left transition",
-                    occupied
-                      ? "cursor-default border-brand/30 bg-brand-muted/60"
-                      : "border-border bg-card hover:border-brand hover:bg-brand-muted/40",
-                    isSuggested &&
-                      "ring-2 ring-brand ring-offset-2 ring-offset-surface",
-                    !occupied &&
-                      selectedOrderId &&
-                      "cursor-pointer",
-                  )}
-                >
-                  <div className="flex w-full items-baseline justify-between">
-                    <span className="font-display text-xl font-semibold">
-                      {table.label}
-                    </span>
-                    <span className="text-xs text-muted">
-                      {table.capacity} seats
-                    </span>
-                  </div>
-                  {table.assignment ? (
+              const canSeat =
+                !occupied && Boolean(selectedOrderId) && !assign.isPending;
+              const tileClass = cn(
+                "relative flex min-h-[7.5rem] flex-col items-start justify-between rounded-lg border p-3 text-left transition",
+                occupied
+                  ? "border-brand/30 bg-brand-muted/60"
+                  : "border-border bg-card",
+                isSuggested &&
+                  "ring-2 ring-brand ring-offset-2 ring-offset-surface",
+                canSeat &&
+                  "cursor-pointer hover:border-brand hover:bg-brand-muted/40",
+              );
+
+              const header = (
+                <div className="flex w-full items-baseline justify-between">
+                  <span className="font-display text-xl font-semibold">
+                    {table.label}
+                  </span>
+                  <span className="text-xs text-muted">
+                    {table.capacity} seats
+                  </span>
+                </div>
+              );
+
+              if (occupied && table.assignment) {
+                return (
+                  <div key={table.id} className={tileClass}>
+                    {header}
                     <div className="mt-2 space-y-0.5 text-xs">
                       <p className="font-medium text-ink">
                         {table.assignment.orderNumber}
                       </p>
-                      <p className="text-muted">{table.assignment.customerName}</p>
+                      <p className="text-muted">
+                        {table.assignment.customerName}
+                      </p>
                       <p className="text-muted">
                         party {table.assignment.partySize} ·{" "}
                         {table.assignment.source}
@@ -159,23 +158,35 @@ export function FloorPage() {
                         variant="ghost"
                         className="mt-1 h-7 px-2 text-xs"
                         disabled={clear.isPending}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          void onClear(table.assignment!.orderId);
-                        }}
+                        onClick={() => void onClear(table.assignment!.orderId)}
                       >
                         Clear
                       </Button>
                     </div>
-                  ) : (
-                    <p className="mt-auto text-xs text-muted">
-                      {selectedOrderId
-                        ? isSuggested
-                          ? "Accept suggestion"
-                          : "Override seat here"
-                        : "Free"}
-                    </p>
-                  )}
+                  </div>
+                );
+              }
+
+              return (
+                <button
+                  key={table.id}
+                  type="button"
+                  disabled={!canSeat}
+                  onClick={() => {
+                    const source =
+                      table.id === suggestedTableId ? "AI" : "HOST";
+                    void onAssign(table.id, source);
+                  }}
+                  className={tileClass}
+                >
+                  {header}
+                  <p className="mt-auto text-xs text-muted">
+                    {selectedOrderId
+                      ? isSuggested
+                        ? "Accept suggestion"
+                        : "Override seat here"
+                      : "Free"}
+                  </p>
                 </button>
               );
             })}
