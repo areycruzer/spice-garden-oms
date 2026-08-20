@@ -17,6 +17,7 @@ const schema = z.object({
   name: z.string().min(1, "Name is required"),
   email: z.string().email().optional().or(z.literal("")),
   phone: z.string().min(1, "Phone is required"),
+  partySize: z.coerce.number().int().min(1).max(20),
   items: z
     .array(
       z.object({
@@ -49,6 +50,7 @@ export function CreateOrderPage() {
       name: "",
       email: "",
       phone: "",
+      partySize: 2,
       items: [{ itemName: "", quantity: 1, unitPrice: 0 }],
     },
   });
@@ -95,6 +97,7 @@ export function CreateOrderPage() {
           email: values.email ? values.email : null,
           phone: values.phone,
         },
+        partySize: values.partySize,
         items: values.items.map((item) => ({
           itemName: item.itemName,
           quantity: item.quantity,
@@ -202,6 +205,16 @@ export function CreateOrderPage() {
             <div>
               <Label htmlFor="email">Email</Label>
               <Input id="email" type="email" {...form.register("email")} />
+            </div>
+            <div>
+              <Label htmlFor="partySize">Party size</Label>
+              <Input
+                id="partySize"
+                type="number"
+                min={1}
+                max={20}
+                {...form.register("partySize")}
+              />
             </div>
           </div>
         </section>

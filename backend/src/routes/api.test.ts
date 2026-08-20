@@ -6,8 +6,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   customers,
+  diningTables,
   orderItems,
+  orderStatusEvents,
   orders,
+  seatingAssignments,
 } from "@spice-garden/database/schema";
 import { createApp } from "../app.js";
 
@@ -26,9 +29,12 @@ const db = drizzle(sql);
 const app = createApp();
 
 async function resetDb() {
+  await db.delete(seatingAssignments);
+  await db.delete(orderStatusEvents);
   await db.delete(orderItems);
   await db.delete(orders);
   await db.delete(customers);
+  await db.delete(diningTables);
   await sql`ALTER SEQUENCE order_number_seq RESTART WITH 1001`;
 }
 
@@ -368,6 +374,11 @@ describe("API integration", () => {
     );
     expect(preparing.status).toBe(200);
     expect(preparing.body.data.status).toBe("PREPARING");
+    expect(preparing.body.data.statusEvents.length).toBeGreaterThanOrEqual(2);
+    expect(preparing.body.data.opsInsight.diningPhase).toBe("cooking");
+    expect(preparing.body.data.opsInsight.quotedReadyMinutes).toBe(
+      Math.ceil(Math.max(3, 1.5 * preparing.body.data.itemCount)),
+    );
 
     const added = await json(
       await app.request(`/orders/${orderId}/items`, {
@@ -442,5 +453,118 @@ describe("API integration", () => {
 
     // silence unused
     expect(itemId).toBeTruthy();
+  });
+
+  it("records opsInsight and status events on create", async () => {
+    const created = await json(
+      await app.request("/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          customer: {
+            id: null,
+            name: "Ops Guest",
+            email: null,
+            phone: "+919900000020",
+          },
+          partySize: 4,
+          items: [
+            { itemName: "Thali", quantity: 2, unitPrice: 350 },
+            { itemName: "Naan", quantity: 2, unitPrice: 60 },
+          ],
+        }),
+      }),
+    );
+    expect(created.status).toBe(201);
+    expect(created.body.data.partySize).toBe(4);
+    expect(created.body.data.opsInsight.diningPhase).toBe("queued");
+    expect(created.body.data.opsInsight.quotedReadyMinutes).toBe(
+      Math.ceil(2 + 0.5 * 4) + Math.ceil(Math.max(3, 1.5 * 4)),
+    );
+    expect(created.body.data.statusEvents[0].toStatus).toBe("CONFIRMED");
+  });
+
+  it("floor suggest prefers capacity-fit free table; host override; clear on COMPLETED", async () => {
+    const tables = await db
+      .insert(diningTables)
+      .values([
+        { label: "T1", capacity: 2 },
+        { label: "T3", capacity: 4 },
+        { label: "T6", capacity: 6 },
+      ])
+      .returning();
+
+    const created = await json(
+      await app.request("/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          customer: {
+            id: null,
+            name: "Floor Guest",
+            email: null,
+            phone: "+919900000021",
+          },
+          partySize: 4,
+          items: [{ itemName: "Biryani", quantity: 2, unitPrice: 380 }],
+        }),
+      }),
+    );
+    const orderId = created.body.data.id as string;
+
+    const suggest = await json(
+      await app.request("/ops/floor/suggest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId }),
+      }),
+    );
+    expect(suggest.status).toBe(200);
+    expect(suggest.body.data.table.label).toBe("T3");
+
+    const t6 = tables.find((t) => t.label === "T6")!;
+    const assignHost = await json(
+      await app.request("/ops/floor/assign", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          orderId,
+          tableId: t6.id,
+          source: "HOST",
+        }),
+      }),
+    );
+    expect(assignHost.status).toBe(200);
+    const seated = assignHost.body.data.tables.find(
+      (t: { label: string }) => t.label === "T6",
+    );
+    expect(seated.status).toBe("OCCUPIED");
+    expect(seated.assignment.source).toBe("HOST");
+
+    await app.request(`/orders/${orderId}/status`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "PREPARING" }),
+    });
+    await app.request(`/orders/${orderId}/status`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "READY" }),
+    });
+    const completed = await json(
+      await app.request(`/orders/${orderId}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "COMPLETED" }),
+      }),
+    );
+    expect(completed.status).toBe(200);
+
+    const floor = await json(await app.request("/ops/floor"));
+    const freed = floor.body.data.tables.find(
+      (t: { label: string }) => t.label === "T6",
+    );
+    expect(freed.status).toBe("FREE");
+    expect(freed.assignment).toBeNull();
   });
 });

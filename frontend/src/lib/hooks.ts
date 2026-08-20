@@ -6,6 +6,7 @@ export const queryKeys = {
   customers: (params: ListParams) => ["customers", params] as const,
   orders: (params: OrderListParams) => ["orders", params] as const,
   order: (id: string) => ["orders", id] as const,
+  floor: ["ops", "floor"] as const,
 };
 
 export function useCustomers(params: ListParams) {
@@ -30,6 +31,14 @@ export function useOrder(id: string) {
   });
 }
 
+export function useFloor() {
+  return useQuery({
+    queryKey: queryKeys.floor,
+    queryFn: () => api.getFloor(),
+    refetchInterval: 8_000,
+  });
+}
+
 export function useCreateOrder() {
   const qc = useQueryClient();
   return useMutation({
@@ -37,6 +46,7 @@ export function useCreateOrder() {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["orders"] });
       void qc.invalidateQueries({ queryKey: ["customers"] });
+      void qc.invalidateQueries({ queryKey: queryKeys.floor });
     },
   });
 }
@@ -48,6 +58,7 @@ export function useUpdateOrderStatus(orderId: string) {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["orders"] });
       void qc.invalidateQueries({ queryKey: queryKeys.order(orderId) });
+      void qc.invalidateQueries({ queryKey: queryKeys.floor });
     },
   });
 }
@@ -74,6 +85,38 @@ export function useRemoveOrderItem(orderId: string) {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["orders"] });
       void qc.invalidateQueries({ queryKey: queryKeys.order(orderId) });
+    },
+  });
+}
+
+export function useSuggestSeat() {
+  return useMutation({
+    mutationFn: (orderId: string) => api.suggestSeat(orderId),
+  });
+}
+
+export function useAssignSeat() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: {
+      orderId: string;
+      tableId: string;
+      source: "AI" | "HOST";
+    }) => api.assignSeat(body),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: queryKeys.floor });
+      void qc.invalidateQueries({ queryKey: ["orders"] });
+    },
+  });
+}
+
+export function useClearSeat() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (orderId: string) => api.clearSeat(orderId),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: queryKeys.floor });
+      void qc.invalidateQueries({ queryKey: ["orders"] });
     },
   });
 }

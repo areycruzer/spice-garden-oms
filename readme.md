@@ -1,6 +1,54 @@
-# Spice Garden — Restaurant Order Management System
+# Spice Garden OMS — Take-home submission
 
-Internal ops dashboard and API for the fictional Indian restaurant chain **Spice Garden**. Manage customers and kitchen orders end to end.
+**Live demo**
+
+| Surface | URL |
+|---------|-----|
+| Frontend | https://spice-garden-oms.vercel.app |
+| API | https://spice-garden-api.onrender.com |
+| Health | https://spice-garden-api.onrender.com/health |
+| Repo | https://github.com/areycruzer/spice-garden-oms |
+
+> Free Render spins down after idle; first API request may take ~30–60s to wake.
+
+## Why this submission (Atithie bridge)
+
+Atithie is building the **AI host for the dining room** — dynamic turn times, accurate quoted waits, a live floor plan, and AI suggestions that hosts can override in one tap.
+
+This take-home delivers the required **Spice Garden order + customer contract**, then adds an explicit **kitchen + Floor Ops layer** on top: status dwell, deterministic quoted-ready estimates, and AI table suggest with first-class host override. The OMS is the kitchen substrate; Floor Ops is the product thesis Atithie sells.
+
+See [SUBMISSION.md](SUBMISSION.md) for a 90-second pitch and Loom outline.
+
+## What the assignment required vs what I added
+
+| Required (contract) | Additive (standout) |
+|---------------------|---------------------|
+| Customers + orders CRUD, status machine, pagination, INR UI | `opsInsight` (phase, dwell, quoted ready, suggested action) |
+| Hono + Zod + Drizzle + Postgres; React + TanStack + Tailwind | `order_status_events` timeline on every transition |
+| Tests + clarifying questions | `/ops/floor` — live tables, suggest, assign (`AI` \| `HOST`), clear |
+| | Auto-clear seating when an order hits `COMPLETED` / `CANCELLED` |
+
+Contract routes under `/customers` and `/orders` are unchanged in behavior. Floor Ops lives under `/ops`.
+
+### Quoted-ready heuristic (not ML)
+
+Documented so reviewers can audit the product judgment:
+
+- **CONFIRMED (queued):** `ceil(2 + 0.5 × itemCount)` minutes in queue, then cooking
+- **PREPARING (cooking):** `ceil(max(3, 1.5 × itemCount))` minutes to plated
+- **ETA to READY:** sum of remaining phases; **READY:** `0`; terminal: `null`
+
+### Floor seating rule
+
+Prefer the **smallest free table** with `capacity >= partySize` (minimize waste). Hosts can accept the highlight (`source: AI`) or tap any other free table (`source: HOST`).
+
+## Tradeoffs & time
+
+- Shipped production seams on the assignment (validation, state machine, transactional totals, tests) before Floor Ops polish.
+- No real ML, no reservation ingest, no multi-tenant restaurants — scoped so the demo stays debriefable.
+- Approx. focused build time: assignment core + Option C standout layer (status events, Floor Ops, packaging).
+
+**Week 1 at Atithie I'd ship next:** wire course-phase signals (appetizer → dessert) into the quote model, and sync floor state over websocket so every host device sees the same plan without polling.
 
 ## Prerequisites
 
@@ -17,36 +65,30 @@ Copy [`.env.example`](.env.example) to `.env` at the repo root (and optionally `
 | `DATABASE_URL` | `postgresql://spice:spice@localhost:5432/spice_garden` | database, backend |
 | `PORT` | `3000` | backend |
 | `VITE_API_BASE_URL` | `http://localhost:3000` | frontend |
+| `FRONTEND_ORIGIN` | (unset locally) | backend CORS in production |
 
 ## Quick start
 
 ```bash
-# 1. Install dependencies
 pnpm install
-
-# 2. Start PostgreSQL
 docker compose up -d
-
-# 3. Migrate & seed
 pnpm db:migrate
 pnpm db:seed
-
-# 4. Run API + UI
 pnpm dev
 ```
 
 - API: http://localhost:3000  
-- UI: http://localhost:5173  
+- UI: http://localhost:5173 → **Order Ops**, **Floor Ops**, **Customers**
 
 ## Folder structure
 
 ```
 restro-os/
-  frontend/          React + Vite + TanStack Query/Table + Tailwind
-  backend/           Hono + Zod + Vitest API
+  frontend/          React + Vite + TanStack Query + Tailwind
+  backend/           Hono + Zod + Vitest API (+ /ops)
   database/          Drizzle schema, migrations, seed
-  docker-compose.yml Postgres 16
-  questions.md       Contract assumptions as clarifying questions
+  questions.md       Contract + Atithie-aware clarifying questions
+  SUBMISSION.md      Pitch + Loom checklist
   readme.md
 ```
 
@@ -56,57 +98,35 @@ restro-os/
 |---------|-------------|
 | `pnpm dev` | Start backend + frontend |
 | `pnpm db:migrate` | Apply Drizzle migrations |
-| `pnpm db:seed` | Seed Spice Garden demo data |
-| `pnpm test` | Run backend Vitest suite |
-| `pnpm --filter backend start` | API only |
-| `bash backend/curl-examples.sh` | REST examples (requires `jq`) |
+| `pnpm db:seed` | Seed customers, orders, 12 tables |
+| `pnpm test` | Backend Vitest suite |
+| `bash backend/curl-examples.sh` | REST examples including `/ops` |
 
 ## API overview
 
-Base URL: `http://localhost:3000`
+### Assignment contract
 
 | Method | Path | Notes |
 |--------|------|-------|
-| GET | `/customers` | `search`, `page`, `size` + pagination meta |
-| POST | `/customers` | 201 |
-| PATCH | `/customers/:id` | |
-| DELETE | `/customers/:id` | 204 |
-| GET | `/orders` | `search`, `status`, `customerId`, pagination |
-| GET | `/orders/:order_id` | Full `OrderDetails` |
-| POST | `/orders` | Creates/attaches customer + items in a transaction |
-| PATCH | `/orders/:order_id/status` | State-machine guarded |
-| POST | `/orders/:order_id/items` | 201, recomputes totals |
-| DELETE | `/orders/:order_id/items/:item_id` | 200, recomputes totals |
+| GET/POST/PATCH/DELETE | `/customers` | search + pagination |
+| GET/POST | `/orders` | optional `partySize` on create |
+| GET | `/orders/:id` | includes `opsInsight`, `statusEvents` |
+| PATCH | `/orders/:id/status` | writes status event; clears seating on terminal |
+| POST/DELETE | `/orders/:id/items`… | mutable in CONFIRMED / PREPARING |
 
-List responses: `{ data, meta: { pagination: { page, size, total, totalPages } } }`  
-Single-resource responses: `{ data }`  
-Errors: `{ error: { code, message } }`
+### Floor Ops (additive)
 
-Error codes: `VALIDATION_FAILED` (400), `INVALID_FILTER` (400), `RESOURCE_NOT_FOUND` (404), `RESOURCE_ALREADY_EXISTS` (409), `INVALID_STATUS_TRANSITION` (409).
-
-## SQLite fallback (local / offline)
-
-The primary dialect is **PostgreSQL**. For a SQLite fallback path with Drizzle:
-
-1. Add `better-sqlite3` to the `database` package.
-2. Point `DATABASE_URL` at a file, e.g. `file:./dev.db`.
-3. Switch Drizzle config `dialect` to `sqlite` and use `drizzle-orm/better-sqlite3`.
-4. Replace Postgres-only features in schema/SQL:
-   - `timestamptz` → integer/text timestamps
-   - `gen_random_uuid()` → application-side UUIDs
-   - `ILIKE` → `LIKE` (case-sensitivity differs)
-   - `order_number_seq` → a SQLite counter table or app-side sequence
-5. Generate and run SQLite migrations separately from the Postgres ones under `database/drizzle/`.
-
-This repo ships the Postgres path as the default production-quality setup.
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/ops/floor` | Tables + active assignments + unseated open orders |
+| POST | `/ops/floor/suggest` | Best-fit free table for `orderId` |
+| POST | `/ops/floor/assign` | Seat (`source: AI \| HOST`) |
+| POST | `/ops/floor/clear` | Free table for an order |
 
 ## Seed data
 
-`pnpm db:seed` loads:
-
-- Indian menu items (Paneer Butter Masala, Chicken Biryani, Masala Dosa, …) with INR prices
-- 8 customers (Aarav Sharma, Priya Nair, …)
-- 16 orders spanning all five statuses across multiple dates (paginates past page 1 at `size=10`)
+- 8 customers, 16 orders across all statuses (INR menu)
+- 12 dining tables (T1–T12); a few seeded AI/HOST assignments so Floor Ops is demo-ready
 
 ## Testing
 
@@ -114,59 +134,23 @@ This repo ships the Postgres path as the default production-quality setup.
 pnpm test
 ```
 
-Integration tests hit the real Postgres instance configured by `DATABASE_URL` and reset tables between cases. Re-seed afterwards if you need demo data in the UI:
-
-```bash
-pnpm db:seed
-```
-
-Curl examples: [`backend/curl-examples.sh`](backend/curl-examples.sh).
+22 tests covering contract flows, opsInsight heuristics, status events, floor suggest / host override, and auto-clear on COMPLETED. Re-seed after tests: `pnpm db:seed`.
 
 ## Troubleshooting
 
 | Issue | Fix |
 |-------|-----|
-| `connection refused` to Postgres | `docker compose up -d` and wait for healthy |
-| Migrations fail | Ensure `DATABASE_URL` matches compose credentials |
-| Frontend empty / CORS | Confirm API on `:3000` and `VITE_API_BASE_URL` |
-| Stale seed after tests | `pnpm db:seed` |
-| Port in use | Set `PORT` / change Vite `server.port`. If `:3000` is taken (e.g. another local app), run `PORT=3001 pnpm --filter backend start` and set `VITE_API_BASE_URL=http://localhost:3001` |
+| Postgres refused | `docker compose up -d` |
+| Frontend CORS | Set `FRONTEND_ORIGIN` to the Vercel URL on Render |
+| Cold start | Hit `/health` once; wait for Render wake |
+| Port 3000 busy | `PORT=3001 pnpm --filter backend start` |
 
 ## Deployment
 
-Recommended split (best fit):
-
-| Piece | Platform | Why |
-|-------|----------|-----|
-| Frontend (Vite SPA) | **Vercel** | Static hosting + SPA rewrites |
-| Backend (Hono API) | **Render** | Long-running Node web service |
-| PostgreSQL | **Render** | Same region as API, free tier available |
-
-### Render (API + DB)
-
-1. Push this repo to GitHub.
-2. In Render Dashboard → **New → Blueprint** and select `render.yaml`, **or** create a free Postgres + Web Service manually:
-   - **Build**: `corepack enable && pnpm install --frozen-lockfile`
-   - **Start**: `pnpm start:api`
-   - **Env**: `DATABASE_URL` (from Render Postgres), `PORT=3000`, `FRONTEND_ORIGIN=https://<your-vercel-app>.vercel.app`
-3. After the API is live, seed once (Render shell or one-off):
-   ```bash
-   DATABASE_URL=... pnpm db:seed
-   ```
-
-### Vercel (frontend)
-
-From `frontend/`:
-
-```bash
-npx vercel --prod
-```
-
-Set env var:
-
-- `VITE_API_BASE_URL=https://<your-render-api>.onrender.com`
-
-Root directory: `frontend`. Framework preset: Vite. Output: `dist`.
+| Piece | Platform |
+|-------|----------|
+| Frontend | Vercel (`frontend/`, `VITE_API_BASE_URL`) |
+| API + Postgres | Render (`render.yaml` / `pnpm start:api`) |
 
 ## License
 

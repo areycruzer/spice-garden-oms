@@ -130,6 +130,37 @@ export function OrderDetailPage() {
       </section>
 
       <section className="rounded-lg border border-border bg-card p-5">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">
+          Kitchen ops insight
+        </h2>
+        <dl className="mt-3 grid gap-3 sm:grid-cols-4">
+          <div>
+            <dt className="text-xs text-muted">Phase</dt>
+            <dd className="font-medium capitalize">
+              {order.opsInsight.diningPhase}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-xs text-muted">Dwell</dt>
+            <dd className="font-medium">{order.opsInsight.dwellMinutes}m</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-muted">Quoted ready</dt>
+            <dd className="font-medium">
+              {order.opsInsight.quotedReadyMinutes === null
+                ? "—"
+                : `~${order.opsInsight.quotedReadyMinutes}m`}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-xs text-muted">Party</dt>
+            <dd className="font-medium">{order.partySize}</dd>
+          </div>
+        </dl>
+        <p className="mt-3 text-sm text-ink">{order.opsInsight.suggestedAction}</p>
+      </section>
+
+      <section className="rounded-lg border border-border bg-card p-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">
             Status
@@ -152,6 +183,25 @@ export function OrderDetailPage() {
             )}
           </div>
         </div>
+        {order.statusEvents.length > 0 && (
+          <ol className="mt-4 space-y-2 border-t border-border pt-4">
+            {order.statusEvents.map((event) => (
+              <li
+                key={event.id}
+                className="flex flex-wrap items-baseline justify-between gap-2 text-sm"
+              >
+                <span>
+                  {event.fromStatus
+                    ? `${statusLabel(event.fromStatus)} → ${statusLabel(event.toStatus)}`
+                    : statusLabel(event.toStatus)}
+                </span>
+                <span className="text-xs text-muted">
+                  {formatDateTime(event.changedAt)}
+                </span>
+              </li>
+            ))}
+          </ol>
+        )}
       </section>
 
       <section className="overflow-hidden rounded-lg border border-border bg-card">

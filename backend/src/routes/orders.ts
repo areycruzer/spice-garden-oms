@@ -5,6 +5,7 @@ import { and, count, desc, eq, ilike, or, sql } from "drizzle-orm";
 import {
   customers,
   orderItems,
+  orderStatusEvents,
   orders,
 } from "@spice-garden/database/schema";
 import { db, sql as pgSql } from "../db/index.js";
@@ -15,6 +16,7 @@ import {
   notFound,
   validationFailed,
 } from "../lib/errors.js";
+import { clearSeatingForOrder } from "../lib/floor.js";
 import { mapOrderDetails } from "../lib/mappers.js";
 import { nextOrderNumber } from "../lib/order-number.js";
 import { recomputeOrderTotals } from "../lib/order-totals.js";
@@ -41,11 +43,11 @@ const createOrderSchema = z.object({
     email: z.string().email().nullable().optional(),
     phone: z.string().min(1, "phone is required"),
   }),
+  partySize: z.number().int().min(1).max(20).optional(),
   items: z
     .array(orderItemInputSchema)
     .min(1, "order must contain at least one item"),
 });
-
 const statusSchema = z.object({
   status: z.enum([
     "CONFIRMED",
@@ -77,7 +79,13 @@ async function loadOrderDetails(orderId: string) {
     .where(eq(orderItems.orderId, orderId))
     .orderBy(orderItems.createdAt);
 
-  return mapOrderDetails(order, customer, items);
+  const events = await db
+    .select()
+    .from(orderStatusEvents)
+    .where(eq(orderStatusEvents.orderId, orderId))
+    .orderBy(orderStatusEvents.changedAt);
+
+  return mapOrderDetails(order, customer, items, events);
 }
 
 ordersRouter.get("/", async (c) => {
@@ -152,6 +160,20 @@ ordersRouter.get("/", async (c) => {
           )
           .orderBy(orderItems.createdAt);
 
+  const allEvents =
+    orderIds.length === 0
+      ? []
+      : await db
+          .select()
+          .from(orderStatusEvents)
+          .where(
+            sql`${orderStatusEvents.orderId} IN (${sql.join(
+              orderIds.map((id) => sql`${id}`),
+              sql`, `,
+            )})`,
+          )
+          .orderBy(orderStatusEvents.changedAt);
+
   const itemsByOrder = new Map<string, typeof allItems>();
   for (const item of allItems) {
     const list = itemsByOrder.get(item.orderId) ?? [];
@@ -159,8 +181,20 @@ ordersRouter.get("/", async (c) => {
     itemsByOrder.set(item.orderId, list);
   }
 
+  const eventsByOrder = new Map<string, typeof allEvents>();
+  for (const event of allEvents) {
+    const list = eventsByOrder.get(event.orderId) ?? [];
+    list.push(event);
+    eventsByOrder.set(event.orderId, list);
+  }
+
   const data = rows.map(({ order, customer }) =>
-    mapOrderDetails(order, customer, itemsByOrder.get(order.id) ?? []),
+    mapOrderDetails(
+      order,
+      customer,
+      itemsByOrder.get(order.id) ?? [],
+      eventsByOrder.get(order.id) ?? [],
+    ),
   );
 
   return c.json(
@@ -229,16 +263,26 @@ ordersRouter.post(
 
         const orderNumber = await nextOrderNumber(pgSql);
 
+        const now = new Date();
         const [order] = await tx
           .insert(orders)
           .values({
             orderNumber,
             customerId,
             status: "CONFIRMED",
+            partySize: body.partySize ?? 2,
             totalAmount: "0",
             itemCount: 0,
+            statusChangedAt: now,
           })
           .returning();
+
+        await tx.insert(orderStatusEvents).values({
+          orderId: order!.id,
+          fromStatus: null,
+          toStatus: "CONFIRMED",
+          changedAt: now,
+        });
 
         await tx.insert(orderItems).values(
           body.items.map((item) => {
@@ -295,10 +339,28 @@ ordersRouter.patch(
       );
     }
 
-    await db
-      .update(orders)
-      .set({ status: nextStatus, updatedAt: new Date() })
-      .where(eq(orders.id, orderId));
+    const now = new Date();
+    await db.transaction(async (tx) => {
+      await tx
+        .update(orders)
+        .set({
+          status: nextStatus,
+          statusChangedAt: now,
+          updatedAt: now,
+        })
+        .where(eq(orders.id, orderId));
+
+      await tx.insert(orderStatusEvents).values({
+        orderId,
+        fromStatus: current,
+        toStatus: nextStatus,
+        changedAt: now,
+      });
+
+      if (nextStatus === "COMPLETED" || nextStatus === "CANCELLED") {
+        await clearSeatingForOrder(tx, orderId, now);
+      }
+    });
 
     const details = await loadOrderDetails(orderId);
     return c.json(okData(details!));

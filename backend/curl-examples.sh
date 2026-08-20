@@ -88,6 +88,26 @@ echo "== Remove item =="
 curl -sS -X DELETE "$BASE/orders/$ORDER_ID/items/$ITEM_ID" | jq .
 
 echo
+echo "== Floor Ops snapshot =="
+curl -sS "$BASE/ops/floor" | jq '{tables: (.data.tables|length), unseated: (.data.unseatedOrders|length)}'
+
+echo
+echo "== Suggest seating for order =="
+SUGGEST=$(curl -sS -X POST "$BASE/ops/floor/suggest" \
+  -H 'Content-Type: application/json' \
+  -d "{\"orderId\":\"$ORDER_ID\"}")
+echo "$SUGGEST" | jq .
+TABLE_ID=$(echo "$SUGGEST" | jq -r '.data.table.id // empty')
+
+if [[ -n "$TABLE_ID" && "$TABLE_ID" != "null" ]]; then
+  echo
+  echo "== Assign seat (AI accept) =="
+  curl -sS -X POST "$BASE/ops/floor/assign" \
+    -H 'Content-Type: application/json' \
+    -d "{\"orderId\":\"$ORDER_ID\",\"tableId\":\"$TABLE_ID\",\"source\":\"AI\"}" | jq '.data.tables[] | select(.assignment != null) | {label, assignment}'
+fi
+
+echo
 echo "== Patch customer =="
 curl -sS -X PATCH "$BASE/customers/$CUSTOMER_ID" \
   -H 'Content-Type: application/json' \

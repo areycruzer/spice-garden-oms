@@ -3,6 +3,7 @@ import { cors } from "hono/cors";
 import { AppError } from "./lib/errors.js";
 import { errorBody } from "./lib/response.js";
 import { customersRouter } from "./routes/customers.js";
+import { opsRouter } from "./routes/ops.js";
 import { ordersRouter } from "./routes/orders.js";
 
 export function createApp() {
@@ -40,6 +41,7 @@ export function createApp() {
 
   app.route("/customers", customersRouter);
   app.route("/orders", ordersRouter);
+  app.route("/ops", opsRouter);
 
   app.onError((err, c) => {
     if (err instanceof AppError) {

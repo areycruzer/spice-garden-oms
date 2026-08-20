@@ -10,7 +10,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <p className="font-display text-2xl font-semibold tracking-tight text-brand">
               Spice Garden
             </p>
-            <p className="text-xs text-muted group-hover:text-ink">Order Ops</p>
+            <p className="text-xs text-muted group-hover:text-ink">Kitchen &amp; Floor</p>
           </Link>
           <nav className="flex items-center gap-2 text-sm">
             <NavLink
@@ -22,7 +22,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 )
               }
             >
-              Orders
+              Order Ops
+            </NavLink>
+            <NavLink
+              to="/floor"
+              className={({ isActive }) =>
+                cn(
+                  "rounded-md px-3 py-1.5 hover:bg-brand-muted hover:text-ink",
+                  isActive ? "bg-brand-muted font-medium text-ink" : "text-muted",
+                )
+              }
+            >
+              Floor Ops
             </NavLink>
             <NavLink
               to="/customers"

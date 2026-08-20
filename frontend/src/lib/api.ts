@@ -3,8 +3,10 @@ import {
   type ApiErrorBody,
   type ApiResponse,
   type Customer,
+  type FloorState,
   type OrderDetails,
   type OrderStatus,
+  type SuggestResult,
 } from "./types";
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3000";
@@ -95,6 +97,7 @@ export const api = {
       email: string | null;
       phone: string;
     };
+    partySize?: number;
     items: { itemName: string; quantity: number; unitPrice: number }[];
   }) {
     return request<OrderDetails>("/orders", {
@@ -123,6 +126,35 @@ export const api = {
   removeOrderItem(orderId: string, itemId: string) {
     return request<OrderDetails>(`/orders/${orderId}/items/${itemId}`, {
       method: "DELETE",
+    });
+  },
+
+  getFloor() {
+    return request<FloorState>("/ops/floor");
+  },
+
+  suggestSeat(orderId: string) {
+    return request<SuggestResult>("/ops/floor/suggest", {
+      method: "POST",
+      body: JSON.stringify({ orderId }),
+    });
+  },
+
+  assignSeat(body: {
+    orderId: string;
+    tableId: string;
+    source: "AI" | "HOST";
+  }) {
+    return request<FloorState>("/ops/floor/assign", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  },
+
+  clearSeat(orderId: string) {
+    return request<FloorState>("/ops/floor/clear", {
+      method: "POST",
+      body: JSON.stringify({ orderId }),
     });
   },
 };
